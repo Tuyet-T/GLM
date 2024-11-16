@@ -1,0 +1,161 @@
+---
+title: "ACST8083 Assignment 1,"
+author: "Ngoc Tuyet Trinh"
+date: "2024-05-02"
+output: html_document
+---
+Question 1
+
+First, I load the data:
+```{r}
+set.seed(10)
+Assg <- read.csv("Assignment1_Dataset_2024.csv")
+```
+
+The dataset has 607697 policies. There are 8 columns: Counts, exposure, x1 (weight), x2 (distance), x3 (age), x4 (carage), x5 (gender) and x6 (state). The summary() provides some statiscal measures of the numerical variables.
+```{r}
+str(Assg)
+```
+```{r}
+summary(Assg)
+```
+There are no missing values in the dataset.
+```{r}
+colSums(is.na(Assg))
+```
+Check the mode of categorical variables:
+```{r}
+names(sort(-table(Assg$gender)))[1]
+```
+```{r}
+names(sort(-table(Assg$state)))[1]
+```
+Change the categorical variables into type of factor
+```{r}
+Assg$gender<-as.factor(Assg$gender)
+Assg$state<-as.factor(Assg$state)
+```
+
+Plot the numerical variables
+```{r}
+par(mfrow = c(2,2))
+#Plotting Numerical data
+hist(Assg$distance)
+hist(Assg$weight)
+hist(Assg$age)
+hist(Assg$carage)
+```
+
+Plot the categorical variables
+```{r}
+gender_counts <- table(Assg$gender)
+pie(gender_counts, main = "Gender Distribution")
+```
+```{r}
+state_counts <- table(Assg$state)
+pie(state_counts, main = "State Distribution")
+```
+
+Question 2
+
+First, I fit the GLM model including x1,x2,x3,x4,x5,x6 and apply the anova() with chisq test to test the significance of the attributes:
+```{r}
+begin_model <-glm(Counts ~ weight + distance + age + carage + gender + state, data=Assg, 
+                  family=poisson(), offset=log(exposure))
+anova(begin_model,test ="Chisq")
+```
+Since x6 (state) is insignificant, I drop it. Then Model1's coefficients are:
+```{r}
+Model1 <-glm(Counts ~ weight + distance + age + carage + gender, data=Assg, 
+             family=poisson(), offset=log(exposure))
+Model1$coefficients
+```
+Let x1 = 2000, x2 = 15, x3 = 30, x4 = 4, x5 = female (don't use x6 because it is dropped already), calculate λ(x) :
+```{r}
+lambda<-predict(Model1, list(weight = 2000,
+                                 distance = 15,
+                                 age = 30,
+                                 carage = 4,
+                                 gender= "female",
+                                 exposure = 1), type="response")
+                                
+lambda
+```
+Plot λ(x) versus x3 (age)
+```{r}
+x_age<-seq(min(Assg$age),max(Assg$age),1)
+y_lambda<-predict(Model1, list(weight=rep(2000, length(x_age)),
+                                      distance=rep(15,length(x_age)),
+                                      age=x_age,
+                                      carage=rep(4,length(x_age)),
+                                      gender=rep("female",length(x_age)),
+                                      exposure=rep(1,length(x_age))), type="response")
+
+plot(x_age,y_lambda, main ="Intensity vs age", xlab="age",ylab="Intensity",col="green",lwd = 2, type="l")
+```
+
+Question 3
+
+Fit the GLM model, use step() to do backward selection, then assign this model as Model2:
+```{r}
+start_model <- glm(Counts ~ weight + distance + age + carage + gender + state +
+                     I(weight^2) + I(distance^2) + I(age^2) + I(carage^2),
+                   data = Assg, family = poisson(), offset = log(exposure))
+Model2<- step(start_model, direction ="backward", trace = 0)
+Model2
+```
+Calculate λ(x) with x1 = 2000, x2 = 15, x3 = 30, x4 = 4, x5 = female
+```{r}
+lambda2<-predict(Model2, list(weight = 2000,
+                             distance = 15,
+                             age = 30,
+                             carage = 4,
+                             gender= "female",
+                             exposure = 1), type="response")
+
+lambda2
+```
+Plot λ(x) versus x3 (age)
+```{r}
+y_lambda2<-predict(Model2, list(weight=rep(2000, length(x_age)),
+                               distance=rep(15,length(x_age)),
+                               age=x_age,
+                               carage=rep(4,length(x_age)),
+                               gender=rep("female",length(x_age)),
+                               exposure=rep(1,length(x_age))), type="response")
+
+plot(x_age,y_lambda, main ="Intensity vs age", xlab="age",ylab="Intensity",col="green",lwd = 2, type="l")
+lines(x_age,y_lambda2, xlab="age",ylab="Intensity",lwd = 2.5,col="red")
+legend(x = "topright",  
+       legend=c("Model1", "Model2"),  
+       fill = c("green","red") )
+```
+
+
+Question 4
+
+The likelihood ratio test for Model1 and Model2:
+```{r}
+library(lmtest)
+lrtest(Model1, Model2)
+```
+Question 5
+
+10-fold cross validation error for Model1:
+```{r}
+library(boot)
+#Set up the cost function
+cost<-function(obs, pred){
+  2*mean(pred - obs + log((obs/pred)^obs ))
+} 
+#Cross validation of GLM for Model1
+CVerror_1<-cv.glm(Assg, Model1, cost, K=10)
+#CVerror for Model1
+CVerror_1$delta[1]
+```
+10-fold cross validation error for Model2:
+```{r}
+CVerr_2<-cv.glm(Assg, Model2, cost, K=10)
+#CVerror for Model2
+CVerr_2$delta[1]
+```
